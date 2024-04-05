@@ -1,0 +1,74 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_DEFAULT_REGION = 'us-west-2'  // Update with your AWS region
+        AWS_EKS_CLUSTER_NAME = 'eks-cluster'  // Update with your EKS cluster name
+        S3_BUCKET_NAME = 'your-s3-bucket-name'  // Update with your S3 bucket name
+        KUBECONFIG = "${WORKSPACE}/kubeconfig.yaml"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build your Docker image
+                    docker.build('your-docker-image-name')
+                }
+            }
+        }
+
+        stage('Push Docker Image to Registry') {
+            steps {
+                script {
+                    // Push your Docker image to a Docker registry
+                    docker.withRegistry('https://your-docker-registry-url', 'your-docker-registry-credentials-id') {
+                        docker.image('your-docker-image-name').push('latest')
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to EKS') {
+            steps {
+                script {
+                    // Configure AWS credentials
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'your-aws-credentials-id', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                        // Authenticate with EKS cluster
+                        sh 'aws eks --region $AWS_DEFAULT_REGION update-kubeconfig --name $AWS_EKS_CLUSTER_NAME'
+
+                        // Apply Kubernetes manifests
+                        sh 'kubectl apply -f your-kubernetes-manifests-directory'
+
+                        // Wait for deployment to finish
+                        sh 'kubectl rollout status deployment/your-deployment-name'
+                    }
+                }
+            }
+        }
+
+        stage('Upload Artifacts to S3') {
+            steps {
+                script {
+                    // Upload artifacts to S3 bucket
+                    sh "aws s3 cp your-artifact-file s3://${S3_BUCKET_NAME}/"
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Deployment successful!'
+        }
+        failure {
+            echo 'Deployment failed!'
+        }
+    }
+}
